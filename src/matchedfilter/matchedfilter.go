@@ -82,7 +82,8 @@ type LFM struct {
 type FilterState struct {
 	lastFiltered    []float64 // last M-1 incomplete filtered samples from previous block
 	firstSampleTime float64   // start time of current submit
-	lastSampleTime  float64   // end time of currrent submit
+	lastSampleTime  float64   // end time of currrent submit or block
+	lastPulseIndex  int       // end index of the LFM pulse for the block
 }
 
 type FilterSignal struct {
@@ -96,7 +97,7 @@ type FilterSignal struct {
 	sampleFreq       int           // sample frequency in Hz
 	FilterState                    // used by current sample block from previous sample block
 	filterCoeff      []float64     // filter coefficients
-	Endpoints                      // embedded struct
+	Endpoints                      // embedded struct for grid boundaries
 	LFM                            // embedded struct for LFM properties
 }
 
@@ -125,10 +126,8 @@ func (fs *FilterSignal) createReplica() {
 	// duration in seconds
 	delta := 1.0 / float64(fs.sampleFreq)
 	A := 1.0
-	// calculate the end of the LFM pulse
-	endPulse := fs.Where + fs.Pulsewidth
 	// Create the LFM pulse and save for match filter using cross-correlation with signal
-	for t := 0.0; t < endPulse; t += delta {
+	for t := 0.0; t < fs.Pulsewidth; t += delta {
 		ang := twoPi*(float64(fs.CenterFreq)-float64(fs.Bandwidth)/2.0)*t +
 			math.Pi*(float64(fs.Bandwidth)/fs.Pulsewidth)*t*t
 		val := A * math.Cos(ang)
@@ -137,8 +136,8 @@ func (fs *FilterSignal) createReplica() {
 	}
 }
 
-// fillBuf populates the buffer with signal samples, fst = first sample time
-func (fs *FilterSignal) fillBuf(n int, fst float64) int {
+// fillBuf populates the buffer with signal samples
+func (fs *FilterSignal) fillBuf(n int) int {
 	// get last sample time from previous block
 	// fill buf n with an LFM waveform with given SNR
 	// Sum the LFM and and noise and insert into the buffer
@@ -151,16 +150,16 @@ func (fs *FilterSignal) fillBuf(n int, fst float64) int {
 	}
 
 	delta := 1.0 / float64(fs.sampleFreq)
-	t := fst
+	t := fs.lastSampleTime
 	// calculate the end of the LFM pulse
 	endPulse := fs.Where + fs.Pulsewidth
-	j := 0
+	j := fs.lastPulseIndex
 	for i := 0; i < howMany; i++ {
-		// Insert the LFM pulse at the desired location
+		// Insert the LFM pulse at the desired location along with noise
 		if t >= fs.Where && t < endPulse {
-			val := fs.filterCoeff[j]
+			fs.buf[n][i] = fs.filterCoeff[j] + fs.Sigma*rand.NormFloat64()
 			j++
-			fs.buf[n][i] = val + fs.Sigma*rand.NormFloat64()
+			// Insert only the noise
 		} else {
 			fs.buf[n][i] = fs.Sigma * rand.NormFloat64()
 		}
@@ -168,8 +167,10 @@ func (fs *FilterSignal) fillBuf(n int, fst float64) int {
 	}
 
 	// Save the next sample time for next block of samples
+	// Save the LFM pulse index for the start of the next block of samples
 	fs.lastSampleTime = t
 	fs.samplesGenerated += howMany
+	fs.lastPulseIndex = j
 	return howMany
 }
 
@@ -417,13 +418,23 @@ func (fs *FilterSignal) generate(r *http.Request) error {
 		return err
 	}
 
+	// check pulsewidth for validity, but first convert pulsewidth from ms to sec
+	if pulsewidth <= 0 || pulsewidth/1000.0 > float64(fs.samples)/float64(fs.sampleFreq) {
+		return fmt.Errorf("pulsewidth %v must be less than the signal duration:  samples/sample frequency", pulsewidth)
+	}
+
 	temp = r.FormValue("where")
 	if len(temp) == 0 {
-		return fmt.Errorf("missing where for LFM signal")
+		return fmt.Errorf("missing where pulse location for LFM signal")
 	}
 	where, err := strconv.ParseFloat(temp, 64)
 	if err != nil {
 		return err
+	}
+
+	// check where for validity:  pulse location must be completely inside the signal duration
+	if where/1000.0 < 0.0 || where/1000.0 > (float64(fs.samples)/float64(fs.sampleFreq)-pulsewidth/1000.0) {
+		return fmt.Errorf("pulse location %v in where must be within the signal", where)
 	}
 
 	// check for aliasing
@@ -463,20 +474,17 @@ func (fs *FilterSignal) generate(r *http.Request) error {
 			fs.wg.Done()
 		}()
 
-		fst := fs.firstSampleTime
 		// loop to generate a block of signal samples
 		// signal the filter when done with each block of samples
 		// block on a semaphore until filter goroutine is available
 		// set the first sample time equal to the previous last sample time
 		for {
-			n := fs.fillBuf(0, fst)
-			fst = fs.lastSampleTime
+			n := fs.fillBuf(0)
 			fs.sema1 <- n
 			if n < block {
 				return
 			}
-			n = fs.fillBuf(1, fst)
-			fst = fs.lastSampleTime
+			n = fs.fillBuf(1)
 			fs.sema2 <- n
 			if n < block {
 				return
@@ -584,7 +592,7 @@ func (fs *FilterSignal) labelExec(w http.ResponseWriter, plot *PlotT) {
 	plot.Location = location
 
 	if len(plot.Status) == 0 {
-		plot.Status = fmt.Sprintf("LFM waveform was match filtered")
+		plot.Status = "LFM waveform was match filtered"
 	}
 
 	// Write to HTTP using template and grid
@@ -624,7 +632,8 @@ func handleFilterSignal(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		filterState := FilterState{firstSampleTime: 0.0, lastFiltered: make([]float64, 0)}
+		filterState := FilterState{firstSampleTime: 0.0, lastSampleTime: 0.0,
+			lastPulseIndex: 0, lastFiltered: make([]float64, 0)}
 
 		// create FilterSignal instance fs
 		fs := FilterSignal{

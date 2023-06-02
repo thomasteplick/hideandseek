@@ -12,21 +12,8 @@
 				min-width: 200px;
 				text-align: right;
 			}
-			form, p, table, fieldset {
+			form, p, fieldset {
 				width: 600px;
-			}
-
-			table input[type="text"] {
-				width: 50px;
-			}
-			table {
-				border: 2px solid black;
-				border-collapse: collapse;
-			}
-
-			td, th {
-				border: 1px solid black;
-				text-align: center;
 			}
 
 			#outer-container {
@@ -114,7 +101,7 @@
 				margin-left: 10px;
 			}
 
-			#samples, #samplefreq, #snr {
+			#samples, #samplefreq, #snr, #where, #pulsewidth, #bandwidth, #location {
 				width: 50px;
 			}
 
@@ -129,11 +116,6 @@
 	</head>
 	<body>
 		<h2>Hide and Seek</h3>
-		<nav>
-			<ul>
-				<li class="links"><a href="http://127.0.0.1:8080/hideandseek">New Signal Sequence</a></li>
-			</ul>
-		</nav>
 		<div id="outer-container">
 			<div id="ylabel-container">
 				{{range .Ylabel}}
@@ -153,37 +135,31 @@
 				</div>
 			</div>
 			<div id="form">
-				<form action="http://127.0.0.1:8080/filtersignal" method="post">
+				<form action="http://127.0.0.1:8080/hideandseek" method="post">
 					<fieldset>
-						<legend>Filter Signal Options</legend>
+						<legend>Matched Filter Options</legend>
 						<div class="options">
 							<label for="samples">Samples:</label>
 							<input type="number" id="samples" name="samples" value="{{.Samples}}" min="2000" max="16000" required />
 							<label for="samplefreq">Sample Frequency:</label>
 							<input type="number" name="samplefreq" value="{{.SampleFreq}}" id="samplefreq" required />
 							<br />
+							<label for="where" id="wherelabel">Where (ms):</label>
+							<input type="number" id="where" name="where" value="{{.Where}}" min="0" required />
 							<label for="snr" id="snrlabel">SNR:</label>
-							<input type="number" id="snr" name="snr" value="{{.SNR}}" required />
-							<label for="filter" id="filterlabel">Filter:</label>
-							<input type="file" id="filter" name="filter" value="{{.Filename}}" />
-							<hr />
-							<h4>Sinusoids</h4>
-							<table>
-								<tr>
-									<th class="sines">Frequency (Hz)</th>
-									<th class="sines">Amplitude</th>
-								</tr>
-								{{range .Sines}}
-									<tr>
-										<td class="sines">
-											<input type="number" name="{{.FreqName}}" value="{{.Freq}}" />
-										</td>
-										<td class="sines">
-											<input type="number" name="{{.AmplName}}" value="{{.Ampl}}" />
-										</td>
-									</tr>
-								{{end}}
-							</table>
+							<input type="number" id="snr" name="snr" value="{{.SNR}}" min="1" required />
+							<br />
+							<label for="pulsewidth" id="pulsewidthlabel">Pulsewidth (ms):</label>
+							<input type="number" id="pulsewidth" name="pulsewidth" value="{{.Pulsewidth}}" min="1" required />
+							<label for="bandwidth" id="bandwidthlabel">Bandwidth (Hz):</label>
+							<input type="number" id="bandwidth" name="bandwidth" value="{{.Bandwidth}}" min="1" required />
+							<br />
+							<input type="radio" id="hide" name="hide-seek" value="hide" checked />
+							<label for="hide">Hide</label>
+							<input type="radio" id="seek" name="hide-seek" value="seek" />
+							<label for="seek">Seek</label>
+							<label for="location" id="locationlabel">Location (ms):</label>
+							<input type="number" name="location" value="{{.Location}}" readonly />
 						</div>
 						<input type="submit" value="Submit" />
 						<input type="text" size="50" name="status" value="{{.Status}}" readonly />
