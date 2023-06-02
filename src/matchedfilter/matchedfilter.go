@@ -701,7 +701,7 @@ func handleFilterSignal(w http.ResponseWriter, r *http.Request) {
 		fs.labelExec(w, &plot)
 
 	} else {
-		plot.Status = "Enter samples, sample frequency, SNR, frequencies and amplitudes"
+		plot.Status = "Enter samples, sample frequency, SNR, where, pulsewidth, bandwidth"
 		if err := hideAndSeekTmpl.Execute(w, plot); err != nil {
 			log.Fatalf("Write to HTTP output using template with error: %v\n", err)
 		}
@@ -713,7 +713,7 @@ func main() {
 	// Setup http server with handler for generating and filtering noisy signals
 	http.HandleFunc(patternhideandseek, handleFilterSignal)
 
-	fmt.Printf("Filter Signal Server listening on %v.\n", addr)
+	fmt.Printf("Hide and Seek Server listening on %v.\n", addr)
 
 	http.ListenAndServe(addr, nil)
 }

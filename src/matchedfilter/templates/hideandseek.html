@@ -111,6 +111,9 @@
 			#filterlabel {
 				margin-left: 75px;
 			}
+			#locationlabel {
+				margin-left: 50px;
+			}
 
 		</style>
 	</head>
@@ -146,7 +149,7 @@
 							<br />
 							<label for="where" id="wherelabel">Where (ms):</label>
 							<input type="number" id="where" name="where" value="{{.Where}}" min="0" required />
-							<label for="snr" id="snrlabel">SNR:</label>
+							<label for="snr" id="snrlabel">SNR (db):</label>
 							<input type="number" id="snr" name="snr" value="{{.SNR}}" min="1" required />
 							<br />
 							<label for="pulsewidth" id="pulsewidthlabel">Pulsewidth (ms):</label>
@@ -159,7 +162,7 @@
 							<input type="radio" id="seek" name="hide-seek" value="seek" />
 							<label for="seek">Seek</label>
 							<label for="location" id="locationlabel">Location (ms):</label>
-							<input type="number" name="location" value="{{.Location}}" readonly />
+							<input type="number" id="location" name="location" value="{{.Location}}" readonly />
 						</div>
 						<input type="submit" value="Submit" />
 						<input type="text" size="50" name="status" value="{{.Status}}" readonly />
