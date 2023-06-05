@@ -623,14 +623,16 @@ func (fs *FilterSignal) labelExec(w http.ResponseWriter, plot *PlotT) {
 	plot.Pulsewidth = fmt.Sprintf("%.0f", fs.Pulsewidth*1000.0) // change to ms from sec
 	plot.Bandwidth = fmt.Sprintf("%.0f", fs.Bandwidth)
 	location := ""
-	// only show location if "Seek" chosen
+	success := "LFM waveform without match filtering"
+	// only show location if "Seek" chosen, choose different success status
 	if fs.nmax > 0 {
 		location = fmt.Sprintf("%.0f", float64(fs.nmax)/float64(fs.sampleFreq)*1000.0) // change to ms
+		success = "LFM waveform with match filtering"
 	}
 	plot.Location = location
 
 	if len(plot.Status) == 0 {
-		plot.Status = "LFM waveform was match filtered"
+		plot.Status = success
 	}
 
 	// Write to HTTP using template and grid
