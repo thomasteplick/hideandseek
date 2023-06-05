@@ -40,9 +40,9 @@ import (
 )
 
 const (
-	rows                       = 300 // #rows in grid
-	columns                    = 300 // #columns in grid
-	block                      = 512 // size of buf1 and buf2, chunks of data to process
+	rows                       = 300  // #rows in grid
+	columns                    = 300  // #columns in grid
+	block                      = 1024 // size of buf1 and buf2, chunks of data to process
 	patternhideandseek         = "/hideandseek"
 	tmplhideandseek            = "templates/hideandseek.html"
 	addr                       = "127.0.0.1:8080" // http server listen address
@@ -94,6 +94,7 @@ type FilterSignal struct {
 	done             chan struct{} // generator Signal to the filter when all samples generated
 	samples          int           // total number of samples per submit
 	samplesGenerated int           // number of samples generated so far for this submit
+	samplesFiltered  int           // number of samples filtered so far for this submit
 	sampleFreq       int           // sample frequency in Hz
 	FilterState                    // used by current sample block from previous sample block
 	filterCoeff      []float64     // filter coefficients
@@ -154,9 +155,10 @@ func (fs *FilterSignal) fillBuf(n int) int {
 	// calculate the end of the LFM pulse
 	endPulse := fs.Where + fs.Pulsewidth
 	j := fs.lastPulseIndex
+	lenmf := len(fs.filterCoeff)
 	for i := 0; i < howMany; i++ {
 		// Insert the LFM pulse at the desired location along with noise
-		if t >= fs.Where && t < endPulse {
+		if t >= fs.Where && t < endPulse && j < lenmf {
 			fs.buf[n][i] = fs.filterCoeff[j] + fs.Sigma*rand.NormFloat64()
 			j++
 			// Insert only the noise
@@ -187,9 +189,10 @@ func (fs *FilterSignal) gridFillInterp(plot *PlotT) error {
 		timeStep     float64 = 1.0 / float64(fs.sampleFreq)
 		pulseStart   float64 = fs.Where
 		pulseEnd     float64 = pulseStart + fs.Pulsewidth
-		mfMax        float64 = float64(fs.nmax-len(fs.filterCoeff)) * timeStep
-		mfStart      float64 = mfMax - 2*timeStep
-		mfEnd        float64 = mfMax + 2*timeStep
+		mflen        int     = len(fs.filterCoeff)
+		mfMax        float64 = float64(fs.nmax) * timeStep
+		mfStart      float64 = mfMax - 15*timeStep
+		mfEnd        float64 = mfMax + 15*timeStep
 	)
 
 	// Mark the data x-y coordinate online at the corresponding
@@ -209,6 +212,13 @@ func (fs *FilterSignal) gridFillInterp(plot *PlotT) error {
 	}
 	defer f.Close()
 	input = bufio.NewScanner(f)
+
+	// if using matched filter skip first matched filter length - 1 samples
+	if fs.nmax > 0 {
+		for i := 0; i < mflen-1; i++ {
+			input.Scan()
+		}
+	}
 
 	// Get first sample
 	input.Scan()
@@ -331,31 +341,28 @@ func (fs *FilterSignal) filterBuf(index int, nsamples int, f *os.File) {
 		}
 		if sum > fs.ymax {
 			fs.ymax = sum
-			fs.nmax = n + fs.samplesGenerated
+			fs.nmax = n + fs.samplesFiltered - m + 1
 		}
 		fmt.Fprintf(f, "%f\n", sum)
-	}
-
-	// This is the last block and it has no more samples since nsamples <= m-1
-	if end == nsamples {
-		return
 	}
 
 	// this section of the block have samples for all the coefficients
-	for n := end; n < nsamples-m; n++ {
-		sum := 0.0
-		for k := 0; k < m; k++ {
-			sum += fs.buf[index][n+k] * fs.filterCoeff[k]
+	if end == m-1 {
+		for n := 0; n <= nsamples-m; n++ {
+			sum := 0.0
+			for k := 0; k < m; k++ {
+				sum += fs.buf[index][n+k] * fs.filterCoeff[k]
+			}
+			// find min/max of the signal as we go
+			if sum < fs.ymin {
+				fs.ymin = sum
+			}
+			if sum > fs.ymax {
+				fs.ymax = sum
+				fs.nmax = n + fs.samplesFiltered
+			}
+			fmt.Fprintf(f, "%f\n", sum)
 		}
-		// find min/max of the signal as we go
-		if sum < fs.ymin {
-			fs.ymin = sum
-		}
-		if sum > fs.ymax {
-			fs.ymax = sum
-			fs.nmax = n + fs.samplesGenerated
-		}
-		fmt.Fprintf(f, "%f\n", sum)
 	}
 
 	// Generate the partially filtered outputs used in next block
@@ -369,7 +376,29 @@ func (fs *FilterSignal) filterBuf(index int, nsamples int, f *os.File) {
 			fs.lastFiltered[i] = sum
 			i++
 		}
+		// save last m-1 partial correlations
+	} else {
+		// enough samples in this block to correlate
+		if nsamples >= m-1 {
+			for n := nsamples - m + 1; n < nsamples; n++ {
+				sum := 0.0
+				for k := n; k < nsamples; k++ {
+					sum += fs.buf[index][k] * fs.filterCoeff[k-n]
+				}
+				fmt.Fprintf(f, "%f\n", sum)
+			}
+			// partial correlation from this block
+		} else {
+			for n := 0; n < nsamples; n++ {
+				sum := 0.0
+				for k := n; k < nsamples; k++ {
+					sum += fs.buf[index][k] * fs.filterCoeff[k-n]
+				}
+				fmt.Fprintf(f, "%f\n", sum)
+			}
+		}
 	}
+	fs.samplesFiltered += nsamples
 }
 
 // nofilterBuf saves the signal to a file.  It is not modified.
@@ -418,6 +447,11 @@ func (fs *FilterSignal) generate(r *http.Request) error {
 		return err
 	}
 
+	// Restrict replica size to block samples, convert ms to sec for pulsewidth
+	if pulsewidth/1000.0*float64(fs.sampleFreq) >= block {
+		return fmt.Errorf("pulsewidth >= number of samples")
+	}
+
 	// check pulsewidth for validity, but first convert pulsewidth from ms to sec
 	if pulsewidth <= 0 || pulsewidth/1000.0 > float64(fs.samples)/float64(fs.sampleFreq) {
 		return fmt.Errorf("pulsewidth %v must be less than the signal duration:  samples/sample frequency", pulsewidth)
@@ -445,10 +479,11 @@ func (fs *FilterSignal) generate(r *http.Request) error {
 		return fmt.Errorf("aliasing: CenterFreq + Bandwidth/2 > SampleFreq/2")
 	}
 
-	// A^2*tau/(sigma*sigma), where A is the peak pulse amplitude, tau is the pulse width,
+	// A^2*tau/(sigma*sigma), where A is the peak pulse amplitude, tau is the pulse width in sec,
 	// sigma is the noise standard deviation, E = A^2*tau is the signal energy
 	A := 1.0
-	E := A * A * pulsewidth
+	// convert pulsewidth from ms to sec
+	E := A * A * pulsewidth / 1000.0
 
 	// Calculate the noise standard deviation using the SNR and maxampl
 	ratio := math.Pow(10.0, float64(snr)/10.0)
@@ -462,6 +497,9 @@ func (fs *FilterSignal) generate(r *http.Request) error {
 		CenterFreq: float64(fs.sampleFreq / 4.0),
 		Sigma:      noiseSD,
 	}
+
+	// Create the LFM waveform used for matched filtering the signal
+	fs.createReplica()
 
 	// increment wg
 	fs.wg.Add(1)
@@ -587,7 +625,7 @@ func (fs *FilterSignal) labelExec(w http.ResponseWriter, plot *PlotT) {
 	location := ""
 	// only show location if "Seek" chosen
 	if fs.nmax > 0 {
-		location = fmt.Sprintf("%.0f", float64(fs.nmax-(len(fs.filterCoeff)-1))/float64(fs.sampleFreq)*1000.0) // change to ms
+		location = fmt.Sprintf("%.0f", float64(fs.nmax)/float64(fs.sampleFreq)*1000.0) // change to ms
 	}
 	plot.Location = location
 
@@ -643,6 +681,7 @@ func handleFilterSignal(w http.ResponseWriter, r *http.Request) {
 			done:             make(chan struct{}),
 			samples:          samples,
 			samplesGenerated: 0,
+			samplesFiltered:  0,
 			sampleFreq:       sf,
 			FilterState:      filterState,
 			filterCoeff:      make([]float64, 0),
@@ -650,9 +689,6 @@ func handleFilterSignal(w http.ResponseWriter, r *http.Request) {
 		}
 		fs.buf[0] = make([]float64, block)
 		fs.buf[1] = make([]float64, block)
-
-		// Create the LFM waveform used for matched filtering the signal
-		fs.createReplica()
 
 		// start generating samples and send to filter
 		err = fs.generate(r)
