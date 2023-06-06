@@ -92,16 +92,24 @@
 				background-color: gray;
 				color: gray;
 			}
-			div.grid > div.pulse {
+			div.grid > div.pulse1 {
 				background-color: red;
 				color: red;
+			}
+			div.grid > div.pulse2 {
+				background-color: blue;
+				color: blue;
+			}
+			div.grid > div.pulse1-2 {
+				background-color: fuchsia;
+				color: fuchsia;
 			}
 
 			#form {
 				margin-left: 10px;
 			}
 
-			#samples, #samplefreq, #snr, #where, #pulsewidth, #bandwidth, #location {
+			#samples, #samplefreq, #snr, #where1, #where2, #pulsewidth, #bandwidth, #location1, #location2 {
 				width: 50px;
 			}
 
@@ -109,8 +117,11 @@
 				margin-left: 37px;
 			}
 
-			#wherelabel {
-				margin-left: 22px;
+			#where1label {
+				margin-left: 15px;
+			}
+			#where2label {
+				margin-left: 30px;
 			}
 
 			#bandwidthlabel {
@@ -120,8 +131,11 @@
 			#snrlabel {
 				margin-left: 50px;
 			}
-			#locationlabel {
-				margin-left: 70px;
+			#location1label {
+				margin-left: 65px;
+			}
+			#location2label {
+				margin-left: 20px;
 			}
 
 		</style>
@@ -156,22 +170,26 @@
 							<label for="samplefreq" id="samplefreqlabel">Sample Frequency:</label>
 							<input type="number" name="samplefreq" value="{{.SampleFreq}}" id="samplefreq" required />
 							<br />
-							<label for="where" id="wherelabel">Where (ms):</label>
-							<input type="number" id="where" name="where" value="{{.Where}}" min="0" required />
-							<label for="snr" id="snrlabel">SNR (db):</label>
-							<input type="number" id="snr" name="snr" value="{{.SNR}}" min="1" required />
+							<label for="where1" id="where1label">Where1 (ms):</label>
+							<input type="number" id="where1" name="where1" value="{{.Where1}}" min="1" required />
+							<label for="where2"  id="where2label">Where2 (ms):</label>
+							<input type="number" id="where2" name="where2" value="{{.Where2}}" min="1"  required />
 							<br />
 							<label for="pulsewidth" id="pulsewidthlabel">Pulsewidth (ms):</label>
 							<input type="number" id="pulsewidth" name="pulsewidth" value="{{.Pulsewidth}}" min="1" required />
 							<label for="bandwidth" id="bandwidthlabel">Bandwidth (Hz):</label>
 							<input type="number" id="bandwidth" name="bandwidth" value="{{.Bandwidth}}" min="1" required />
+							<label for="snr" id="snrlabel">SNR (db):</label>
+							<input type="number" id="snr" name="snr" value="{{.SNR}}" min="1" required />
 							<br />
 							<input type="radio" id="hide" name="hide-seek" value="hide" checked />
 							<label for="hide">Hide</label>
 							<input type="radio" id="seek" name="hide-seek" value="seek" />
 							<label for="seek">Seek</label>
-							<label for="location" id="locationlabel">Location (ms):</label>
-							<input type="number" id="location" name="location" value="{{.Location}}" readonly />
+							<label for="location1" id="location1label">Location1 (ms):</label>
+							<input type="number" id="location1" name="location1" value="{{.Location1}}" readonly />
+							<label for="location2" id="location2label">Location2 (ms):</label>
+							<input type="number" id="location2" name="location2" value="{{.Location2}}" readonly />
 						</div>
 						<input type="submit" value="Submit" />
 						<input type="text" size="50" name="status" value="{{.Status}}" readonly />

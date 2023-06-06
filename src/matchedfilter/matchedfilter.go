@@ -1,6 +1,6 @@
 /*
 	*********************	Hide and Seek   ********************
-	Hide a linear frequency-modulated (LFM) pulse of given pulse duration and bandwidth in Gaussian noise.
+	Hide linear frequency-modulated (LFM) pulses of given pulse duration and bandwidth in Gaussian noise.
 	Also called a chirp waveform and used in sonar and radar applications.  User enters Where (ms), pulse width (ms),
 	bandwidth (Hz), Samples (integer), Sample Rate (Hz), and Signal-to-Noise ratio (SNR in dB).  The location of
 	the pulse is shown in red in the plot.  The "Hide" button displays the pulse in Gaussian noise.
@@ -10,7 +10,8 @@
 	The tradeoff is between the pulse duration which increases the SNR but decreases the range resolution.
 	Pulse compression allows you to increase the pulse duration thereby increasing the transmitted energy,
 	but the waveform is compresssed in the receiver processing thereby increasing the range resolution.
-	So you get increased SNR and range resolution at the same time.
+	So you get increased SNR and range resolution at the same time.  This is useful in separating two closely
+	spaced LFM pulses.
 
 	This program simulates using Direct Memory Access (DMA) with interrupts on a Digital Signal Processor (DSP).
 	Multiple goroutines allow generating the signal and filtering the signal concurrently.  Mulitple-
@@ -64,13 +65,16 @@ type PlotT struct {
 	SNR        string   // signal-to-noise ratio
 	Pulsewidth string   // millisecond
 	Bandwidth  string   // Hz
-	Where      string   // millisecond
-	Location   string   // millisecond
+	Where1     string   // millisecond
+	Location1  string   // millisecond
+	Where2     string   // millisecond
+	Location2  string   // millisecond
 }
 
 // linear frequency modulation waveform properties
 type LFM struct {
-	Where      float64 // pulse location in ms
+	Where1     float64 // pulse location in ms
+	Where2     float64 // pulse location in ms
 	Pulsewidth float64 // pulse width in ms
 	Bandwidth  float64 // bandwidth in Hz
 	SNR        float64 // signal-to-noise ratio in dB
@@ -83,7 +87,8 @@ type FilterState struct {
 	lastFiltered    []float64 // last M-1 incomplete filtered samples from previous block
 	firstSampleTime float64   // start time of current submit
 	lastSampleTime  float64   // end time of currrent submit or block
-	lastPulseIndex  int       // end index of the LFM pulse for the block
+	lastPulseIndex1 int       // end index of the LFM pulse1 for the block
+	lastPulseIndex2 int       // end index of the LFM pulse2 for the block
 }
 
 type FilterSignal struct {
@@ -104,11 +109,13 @@ type FilterSignal struct {
 
 // Type to hold the minimum and maximum data values
 type Endpoints struct {
-	xmin float64
-	xmax float64
-	ymin float64
-	ymax float64
-	nmax int // index of the maximum match filter output
+	xmin  float64
+	xmax  float64
+	ymin  float64
+	ymax1 float64
+	ymax2 float64
+	nmax1 int // index of the maximum match filter output
+	nmax2 int // index of the next-maximum match filter output
 }
 
 var (
@@ -153,18 +160,26 @@ func (fs *FilterSignal) fillBuf(n int) int {
 	delta := 1.0 / float64(fs.sampleFreq)
 	t := fs.lastSampleTime
 	// calculate the end of the LFM pulse
-	endPulse := fs.Where + fs.Pulsewidth
-	j := fs.lastPulseIndex
+	endPulse1 := fs.Where1 + fs.Pulsewidth
+	endPulse2 := fs.Where2 + fs.Pulsewidth
+	j1 := fs.lastPulseIndex1
+	j2 := fs.lastPulseIndex2
 	lenmf := len(fs.filterCoeff)
 	for i := 0; i < howMany; i++ {
-		// Insert the LFM pulse at the desired location along with noise
-		if t >= fs.Where && t < endPulse && j < lenmf {
-			fs.buf[n][i] = fs.filterCoeff[j] + fs.Sigma*rand.NormFloat64()
-			j++
-			// Insert only the noise
-		} else {
-			fs.buf[n][i] = fs.Sigma * rand.NormFloat64()
+		fs.buf[n][i] = 0
+		// Insert the LFM pulse 1 at the desired location
+		if t >= fs.Where1 && t < endPulse1 && j1 < lenmf {
+			fs.buf[n][i] += fs.filterCoeff[j1]
+			j1++
 		}
+		// Insert the LFM pulse 2 at the desired location
+		if t >= fs.Where2 && t < endPulse2 && j2 < lenmf {
+			fs.buf[n][i] += fs.filterCoeff[j2]
+			j2++
+		}
+		// Insert the noise
+		fs.buf[n][i] += fs.Sigma * rand.NormFloat64()
+
 		t += delta
 	}
 
@@ -172,7 +187,8 @@ func (fs *FilterSignal) fillBuf(n int) int {
 	// Save the LFM pulse index for the start of the next block of samples
 	fs.lastSampleTime = t
 	fs.samplesGenerated += howMany
-	fs.lastPulseIndex = j
+	fs.lastPulseIndex1 = j1
+	fs.lastPulseIndex2 = j2
 	return howMany
 }
 
@@ -187,12 +203,17 @@ func (fs *FilterSignal) gridFillInterp(plot *PlotT) error {
 		yscale       float64
 		input        *bufio.Scanner
 		timeStep     float64 = 1.0 / float64(fs.sampleFreq)
-		pulseStart   float64 = fs.Where
-		pulseEnd     float64 = pulseStart + fs.Pulsewidth
+		pulseStart1  float64 = fs.Where1
+		pulseEnd1    float64 = pulseStart1 + fs.Pulsewidth
+		pulseStart2  float64 = fs.Where2
+		pulseEnd2    float64 = pulseStart2 + fs.Pulsewidth
 		mflen        int     = len(fs.filterCoeff)
-		mfMax        float64 = float64(fs.nmax) * timeStep
-		mfStart      float64 = mfMax - 15*timeStep
-		mfEnd        float64 = mfMax + 15*timeStep
+		mfMax1       float64 = float64(fs.nmax1) * timeStep
+		mfStart1     float64 = mfMax1 - 15*timeStep
+		mfEnd1       float64 = mfMax1 + 15*timeStep
+		mfMax2       float64 = float64(fs.nmax2) * timeStep
+		mfStart2     float64 = mfMax2 - 15*timeStep
+		mfEnd2       float64 = mfMax2 + 15*timeStep
 	)
 
 	// Mark the data x-y coordinate online at the corresponding
@@ -203,7 +224,7 @@ func (fs *FilterSignal) gridFillInterp(plot *PlotT) error {
 
 	// Calculate scale factors for x and y
 	xscale = (columns - 1) / (fs.xmax - fs.xmin)
-	yscale = (rows - 1) / (fs.ymax - fs.ymin)
+	yscale = (rows - 1) / (fs.ymax1 - fs.ymin)
 
 	f, err := os.Open(path.Join(dataDir, signal))
 	if err != nil {
@@ -214,7 +235,7 @@ func (fs *FilterSignal) gridFillInterp(plot *PlotT) error {
 	input = bufio.NewScanner(f)
 
 	// if using matched filter skip first matched filter length - 1 samples
-	if fs.nmax > 0 {
+	if fs.nmax1 > 0 {
 		for i := 0; i < mflen-1; i++ {
 			input.Scan()
 		}
@@ -232,7 +253,7 @@ func (fs *FilterSignal) gridFillInterp(plot *PlotT) error {
 	plot.Grid = make([]string, rows*columns)
 
 	// This cell location (row,col) is on the line
-	row := int((fs.ymax-y)*yscale + .5)
+	row := int((fs.ymax1-y)*yscale + .5)
 	col := int((x-fs.xmin)*xscale + .5)
 	plot.Grid[row*columns+col] = "online"
 
@@ -240,7 +261,7 @@ func (fs *FilterSignal) gridFillInterp(plot *PlotT) error {
 	prevY = y
 
 	// Scale factor to determine the number of interpolation points
-	lenEPy := fs.ymax - fs.ymin
+	lenEPy := fs.ymax1 - fs.ymin
 	lenEPx := fs.xmax - fs.xmin
 
 	// Continue with the rest of the points in the file
@@ -253,18 +274,26 @@ func (fs *FilterSignal) gridFillInterp(plot *PlotT) error {
 		}
 
 		// This cell location (row,col) is on the line
-		row := int((fs.ymax-y)*yscale + .5)
+		row := int((fs.ymax1-y)*yscale + .5)
 		col := int((x-fs.xmin)*xscale + .5)
-		// if no match filter (hide), mark the pulse in red
-		if fs.nmax == 0 {
-			if x >= pulseStart && x < pulseEnd {
-				plot.Grid[row*columns+col] = "pulse"
+		// if no match filter (hide), mark the pulse in red, blue, or red-blue
+		if fs.nmax1 == 0 {
+			if x >= pulseStart1 && x < pulseEnd1 &&
+				x >= pulseStart2 && x < pulseEnd2 {
+				plot.Grid[row*columns+col] = "pulse1-2"
+			} else if x >= pulseStart1 && x < pulseEnd1 {
+				plot.Grid[row*columns+col] = "pulse1"
+			} else if x >= pulseStart2 && x < pulseEnd2 {
+				plot.Grid[row*columns+col] = "pulse2"
 			} else {
 				plot.Grid[row*columns+col] = "online"
 			}
+			// matched filter (seek)
 		} else {
-			if x >= mfStart && x <= mfEnd {
-				plot.Grid[row*columns+col] = "pulse"
+			if x >= mfStart1 && x <= mfEnd1 {
+				plot.Grid[row*columns+col] = "pulse1"
+			} else if x >= mfStart2 && x <= mfEnd2 {
+				plot.Grid[row*columns+col] = "pulse2"
 			} else {
 				plot.Grid[row*columns+col] = "online"
 			}
@@ -290,18 +319,26 @@ func (fs *FilterSignal) gridFillInterp(plot *PlotT) error {
 		interpX := prevX
 		interpY := prevY
 		for i := 0; i < ncells; i++ {
-			row := int((fs.ymax-interpY)*yscale + .5)
+			row := int((fs.ymax1-interpY)*yscale + .5)
 			col := int((interpX-fs.xmin)*xscale + .5)
-			// if no match filter (hide), mark the pulse in red
-			if fs.nmax == 0 {
-				if x >= pulseStart && x < pulseEnd {
-					plot.Grid[row*columns+col] = "pulse"
+			// if no match filter (hide), mark the pulse in red, blue, or red-blue
+			if fs.nmax1 == 0 {
+				if x >= pulseStart1 && x < pulseEnd1 &&
+					x >= pulseStart2 && x < pulseEnd2 {
+					plot.Grid[row*columns+col] = "pulse1-2"
+				} else if x >= pulseStart1 && x < pulseEnd1 {
+					plot.Grid[row*columns+col] = "pulse1"
+				} else if x >= pulseStart2 && x < pulseEnd2 {
+					plot.Grid[row*columns+col] = "pulse2"
 				} else {
 					plot.Grid[row*columns+col] = "online"
 				}
+				// matched filter (seek)
 			} else {
-				if x >= mfStart && x <= mfEnd {
-					plot.Grid[row*columns+col] = "pulse"
+				if x >= mfStart1 && x <= mfEnd1 {
+					plot.Grid[row*columns+col] = "pulse1"
+				} else if x >= mfStart2 && x <= mfEnd2 {
+					plot.Grid[row*columns+col] = "pulse2"
 				} else {
 					plot.Grid[row*columns+col] = "online"
 				}
@@ -339,9 +376,14 @@ func (fs *FilterSignal) filterBuf(index int, nsamples int, f *os.File) {
 		if sum < fs.ymin {
 			fs.ymin = sum
 		}
-		if sum > fs.ymax {
-			fs.ymax = sum
-			fs.nmax = n + fs.samplesFiltered - m + 1
+		if sum > fs.ymax1 {
+			fs.ymax2 = fs.ymax1
+			fs.ymax1 = sum
+			fs.nmax2 = fs.nmax1
+			fs.nmax1 = n + fs.samplesFiltered - m + 1
+		} else if sum > fs.ymax2 {
+			fs.ymax2 = sum
+			fs.nmax2 = n + fs.samplesFiltered - m + 1
 		}
 		fmt.Fprintf(f, "%f\n", sum)
 	}
@@ -357,9 +399,14 @@ func (fs *FilterSignal) filterBuf(index int, nsamples int, f *os.File) {
 			if sum < fs.ymin {
 				fs.ymin = sum
 			}
-			if sum > fs.ymax {
-				fs.ymax = sum
-				fs.nmax = n + fs.samplesFiltered
+			if sum > fs.ymax1 {
+				fs.ymax2 = fs.ymax1
+				fs.ymax1 = sum
+				fs.nmax2 = fs.nmax1
+				fs.nmax1 = n + fs.samplesFiltered
+			} else if sum > fs.ymax2 {
+				fs.ymax2 = sum
+				fs.nmax2 = n + fs.samplesFiltered
 			}
 			fmt.Fprintf(f, "%f\n", sum)
 		}
@@ -409,8 +456,8 @@ func (fs *FilterSignal) nofilterBuf(index int, nsamples int, f *os.File) {
 		if fs.buf[index][n] < fs.ymin {
 			fs.ymin = fs.buf[index][n]
 		}
-		if fs.buf[index][n] > fs.ymax {
-			fs.ymax = fs.buf[index][n]
+		if fs.buf[index][n] > fs.ymax1 {
+			fs.ymax1 = fs.buf[index][n]
 		}
 		fmt.Fprintf(f, "%f\n", fs.buf[index][n])
 	}
@@ -457,18 +504,32 @@ func (fs *FilterSignal) generate(r *http.Request) error {
 		return fmt.Errorf("pulsewidth %v must be less than the signal duration:  samples/sample frequency", pulsewidth)
 	}
 
-	temp = r.FormValue("where")
+	temp = r.FormValue("where1")
 	if len(temp) == 0 {
-		return fmt.Errorf("missing where pulse location for LFM signal")
+		return fmt.Errorf("missing where1 pulse location for LFM signal")
 	}
-	where, err := strconv.ParseFloat(temp, 64)
+	where1, err := strconv.ParseFloat(temp, 64)
 	if err != nil {
 		return err
 	}
 
-	// check where for validity:  pulse location must be completely inside the signal duration
-	if where/1000.0 < 0.0 || where/1000.0 > (float64(fs.samples)/float64(fs.sampleFreq)-pulsewidth/1000.0) {
-		return fmt.Errorf("pulse location %v in where must be within the signal", where)
+	temp = r.FormValue("where2")
+	if len(temp) == 0 {
+		return fmt.Errorf("missing where2 pulse location for LFM signal")
+	}
+	where2, err := strconv.ParseFloat(temp, 64)
+	if err != nil {
+		return err
+	}
+
+	// check where1 for validity:  pulse location must be completely inside the signal duration
+	if where1/1000.0 < 0.0 || where1/1000.0 > (float64(fs.samples)/float64(fs.sampleFreq)-pulsewidth/1000.0) {
+		return fmt.Errorf("pulse location %v in where must be within the signal", where1)
+	}
+
+	// check where2 for validity:  pulse location must be completely inside the signal duration
+	if where2/1000.0 < 0.0 || where2/1000.0 > (float64(fs.samples)/float64(fs.sampleFreq)-pulsewidth/1000.0) {
+		return fmt.Errorf("pulse location %v in where must be within the signal", where2)
 	}
 
 	// check for aliasing
@@ -490,7 +551,8 @@ func (fs *FilterSignal) generate(r *http.Request) error {
 	noiseSD := math.Sqrt(E / ratio)
 
 	fs.LFM = LFM{
-		Where:      where / 1000.0,      // convert millisec to sec
+		Where1:     where1 / 1000.0,     // convert millisec to sec
+		Where2:     where2 / 1000.0,     // convert millisec to sec
 		Pulsewidth: pulsewidth / 1000.0, // convert millisec to sec
 		Bandwidth:  bandwidth,
 		SNR:        float64(snr),
@@ -608,7 +670,7 @@ func (fs *FilterSignal) labelExec(w http.ResponseWriter, plot *PlotT) {
 	}
 
 	// Construct the y-axis labels
-	incr = (fs.ymax - fs.ymin) / (ylabels - 1)
+	incr = (fs.ymax1 - fs.ymin) / (ylabels - 1)
 	y := fs.ymin
 	for i := range plot.Ylabel {
 		plot.Ylabel[i] = fmt.Sprintf("%.2f", y)
@@ -619,17 +681,21 @@ func (fs *FilterSignal) labelExec(w http.ResponseWriter, plot *PlotT) {
 	plot.Samples = strconv.Itoa(fs.samples)
 	plot.SampleFreq = strconv.Itoa(fs.sampleFreq)
 	plot.SNR = fmt.Sprintf("%.0f", fs.SNR)
-	plot.Where = fmt.Sprintf("%.0f", fs.Where*1000.0)           // change to ms from sec
+	plot.Where1 = fmt.Sprintf("%.0f", fs.Where1*1000.0)         // change to ms from sec
+	plot.Where2 = fmt.Sprintf("%.0f", fs.Where2*1000.0)         // change to ms from sec
 	plot.Pulsewidth = fmt.Sprintf("%.0f", fs.Pulsewidth*1000.0) // change to ms from sec
 	plot.Bandwidth = fmt.Sprintf("%.0f", fs.Bandwidth)
-	location := ""
-	success := "LFM waveform without match filtering"
-	// only show location if "Seek" chosen, choose different success status
-	if fs.nmax > 0 {
-		location = fmt.Sprintf("%.0f", float64(fs.nmax)/float64(fs.sampleFreq)*1000.0) // change to ms
-		success = "LFM waveform with match filtering"
+	location1 := ""
+	location2 := ""
+	success := "LFM waveforms without match filtering"
+	// only show location if "Seek" chosen, then choose different success status
+	if fs.nmax1 > 0 && fs.nmax2 > 0 {
+		location1 = fmt.Sprintf("%.0f", float64(fs.nmax1)/float64(fs.sampleFreq)*1000.0) // change to ms
+		location2 = fmt.Sprintf("%.0f", float64(fs.nmax2)/float64(fs.sampleFreq)*1000.0) // change to ms
+		success = "LFM waveforms with match filtering success"
 	}
-	plot.Location = location
+	plot.Location1 = location1
+	plot.Location2 = location2
 
 	if len(plot.Status) == 0 {
 		plot.Status = success
@@ -673,7 +739,7 @@ func handleFilterSignal(w http.ResponseWriter, r *http.Request) {
 		}
 
 		filterState := FilterState{firstSampleTime: 0.0, lastSampleTime: 0.0,
-			lastPulseIndex: 0, lastFiltered: make([]float64, 0)}
+			lastPulseIndex1: 0, lastPulseIndex2: 0, lastFiltered: make([]float64, 0)}
 
 		// create FilterSignal instance fs
 		fs := FilterSignal{
@@ -687,7 +753,7 @@ func handleFilterSignal(w http.ResponseWriter, r *http.Request) {
 			sampleFreq:       sf,
 			FilterState:      filterState,
 			filterCoeff:      make([]float64, 0),
-			Endpoints:        Endpoints{nmax: 0, ymin: 0, ymax: 0, xmin: 0, xmax: 0},
+			Endpoints:        Endpoints{nmax1: 0, nmax2: 0, ymin: 0, ymax1: 0, ymax2: 0, xmin: 0, xmax: 0},
 		}
 		fs.buf[0] = make([]float64, block)
 		fs.buf[1] = make([]float64, block)
