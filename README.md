@@ -25,3 +25,11 @@ pulses in the waveform.
 
 ![image](https://github.com/thomasteplick/hideandseek/assets/117768679/23ad8fd3-fd45-4d7b-978b-0e5a412d127a)
 
+<h4>Overlapping pulses without match filtering</h4>
+
+![image](https://github.com/thomasteplick/hideandseek/assets/117768679/cac46fee-8f47-4416-a2d2-5142f4fd0b64)
+
+<h4>Overlapping pulses with match filtering</h4>
+
+![image](https://github.com/thomasteplick/hideandseek/assets/117768679/02146d91-6716-4718-8447-e88267eea0c9)
+
