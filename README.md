@@ -33,7 +33,7 @@ pulses in the waveform.  The LFM waveform is also called a <em>chirp</em> wavefo
 
 ![image](https://github.com/thomasteplick/hideandseek/assets/117768679/02146d91-6716-4718-8447-e88267eea0c9)
 
-<h4>Overlapping pulses without matchfiltering, SNR=1dB, Pulsewidth=200ms, Bandwith=400Hz</h4>
+<h4>Overlapping pulses without match filtering, SNR=1dB, Pulsewidth=200ms, Bandwith=400Hz</h4>
 
 ![image](https://github.com/thomasteplick/hideandseek/assets/117768679/01ce0c42-d6d6-46ca-a4b0-d8bb5acff719)
 
