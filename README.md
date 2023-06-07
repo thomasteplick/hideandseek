@@ -15,7 +15,7 @@ located inside the complete waveform.  The pulse bandwidth must be less than the
 If this is violated, frequency aliasing will result and the resultant correlation will not be optimum.
 
 A replica of the LFM is used for cross-correlation with the waveform.  That is, a match filter is used to extract the location of the LFM
-pulses in the waveform.
+pulses in the waveform.  The LFM waveform is also called a <em>chirp</em> waveform and is widely used in radar and sonar applications.
 
 <h4>Widely separated pulses without match filtering</h4>
 
