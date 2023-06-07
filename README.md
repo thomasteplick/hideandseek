@@ -17,7 +17,7 @@ If this is violated, frequency aliasing will result and the resultant correlatio
 A replica of the LFM is used for cross-correlation with the waveform.  That is, a match filter is used to extract the location of the LFM
 pulses in the waveform.  The LFM waveform is also called a <em>chirp</em> waveform and is widely used in radar and sonar applications.
 
-<h4>Widely separated pulses without match filtering</h4>
+<h4>Widely separated pulses without match filtering, Pulsewidth=200 ms, Bandwidth=200 Hz</h4>
 
 ![image](https://github.com/thomasteplick/hideandseek/assets/117768679/a5c96eaa-9b34-4045-a64f-a06d2c73e350)
 
@@ -25,7 +25,7 @@ pulses in the waveform.  The LFM waveform is also called a <em>chirp</em> wavefo
 
 ![image](https://github.com/thomasteplick/hideandseek/assets/117768679/23ad8fd3-fd45-4d7b-978b-0e5a412d127a)
 
-<h4>Overlapping pulses without match filtering</h4>
+<h4>Overlapping pulses without match filtering, Pulsewidth=200 ms, Bandwidth=200 Hz</h4>
 
 ![image](https://github.com/thomasteplick/hideandseek/assets/117768679/cac46fee-8f47-4416-a2d2-5142f4fd0b64)
 
@@ -33,3 +33,10 @@ pulses in the waveform.  The LFM waveform is also called a <em>chirp</em> wavefo
 
 ![image](https://github.com/thomasteplick/hideandseek/assets/117768679/02146d91-6716-4718-8447-e88267eea0c9)
 
+<h4>Overlapping pulses without matchfiltering, SNR=1dB, Pulsewidth=200ms, Bandwith=400Hz</h4>
+
+![image](https://github.com/thomasteplick/hideandseek/assets/117768679/01ce0c42-d6d6-46ca-a4b0-d8bb5acff719)
+
+<h4>Overlapping pulses with match filtering, SNR=1db, Pulsewidth=200ms, Bandwidth=400Hz</h4>
+
+![image](https://github.com/thomasteplick/hideandseek/assets/117768679/62810edc-462f-437f-9a0f-8c52aa776abd)
